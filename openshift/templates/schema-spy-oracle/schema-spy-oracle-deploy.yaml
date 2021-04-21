@@ -7,29 +7,54 @@ metadata:
     description: Deployment template for a Schema Spy instance.
     tags: schema-spy
 objects:
-
-  - kind: NetworkSecurityPolicy
-    apiVersion: security.devops.gov.bc.ca/v1alpha1
+  - kind: NetworkPolicy
+    apiVersion: networking.k8s.io/v1
     metadata:
-      name: ${NAME}${SUFFIX}
+      name: ${NAME}${SUFFIX}-allow-ingress
       labels:
-        name: ${NAME}${SUFFIX}
+        name: ${NAME}${SUFFIX}-allow-ingress
         app: ${APP_NAME}${SUFFIX}
         app-group: ${APP_GROUP}
+        role: ${ROLE}
         env: ${TAG_NAME}
     spec:
       description: |
-        Allow schema spy to access the fdw database to generate the schema documentation.
-      source:
-        - - role=${ROLE}
-          - app=${APP_NAME}${SUFFIX}
-          - env=${TAG_NAME}
-          - $namespace=${NAMESPACE}-${TAG_NAME}
-      destination:
-        - - role=${FDW_ROLE}
-          - app=${APP_NAME}${SUFFIX}
-          - env=${TAG_NAME}
-          - $namespace=${NAMESPACE}-${TAG_NAME}
+        Allow traffic from routes into the ${ROLE} container(s).
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  network.openshift.io/policy-group: ingress
+      podSelector:
+        matchLabels:
+          role: ${ROLE}
+          app: ${APP_NAME}${SUFFIX}
+          env: ${TAG_NAME}
+      policyTypes:
+        - Ingress
+
+  # - kind: NetworkSecurityPolicy
+  #   apiVersion: security.devops.gov.bc.ca/v1alpha1
+  #   metadata:
+  #     name: ${NAME}${SUFFIX}
+  #     labels:
+  #       name: ${NAME}${SUFFIX}
+  #       app: ${APP_NAME}${SUFFIX}
+  #       app-group: ${APP_GROUP}
+  #       env: ${TAG_NAME}
+  #   spec:
+  #     description: |
+  #       Allow schema spy to access the fdw database to generate the schema documentation.
+  #     source:
+  #       - - role=${ROLE}
+  #         - app=${APP_NAME}${SUFFIX}
+  #         - env=${TAG_NAME}
+  #         - $namespace=${NAMESPACE}-${TAG_NAME}
+  #     destination:
+  #       - - role=${FDW_ROLE}
+  #         - app=${APP_NAME}${SUFFIX}
+  #         - env=${TAG_NAME}
+  #         - $namespace=${NAMESPACE}-${TAG_NAME}
 
   - kind: Secret
     apiVersion: v1
@@ -42,6 +67,7 @@ objects:
         role: ${ROLE}
         env: ${TAG_NAME}
     stringData:
+      plain-password: ${SCHEMASPY_PLAIN_PASSWORD}
       password: ${SCHEMASPY_PASSWORD}
       user: ${SCHEMASPY_USER}
     type: Opaque
@@ -274,16 +300,20 @@ parameters:
     value: /var/www/html/doc
   - name: SCHEMASPY_USER
     displayName: Username for the SchemaSpy Instance
-    description: Username for the SchemaSpy Instance.  Needs to be basee64 encoded.
+    description: Username for the SchemaSpy Instance.  Needs to be base64 encoded.
     required: true
     generate: expression
     from: "[a-zA-Z_][a-zA-Z0-9_]{10}"
-  - name: SCHEMASPY_PASSWORD
+  - name: SCHEMASPY_PLAIN_PASSWORD
     displayName: Password for the SchemaSpy Instance
-    description: Password for the SchemaSpy Instance.  Needs to be basee64 encoded.
+    description: Plain Text Password for the SchemaSpy Instance.
     required: true
     generate: expression
     from: "[a-zA-Z0-9_~!@#$%^&*()-=<>,.?;:|]{16}"
+  - name: SCHEMASPY_PASSWORD
+    displayName: Password for the SchemaSpy Instance
+    description: Password for the SchemaSpy Instance. It is teh bse64 encoded representation of SCHEMASPY_PLAIN_PASSWORD.
+    required: true
   - name: TAG_NAME
     displayName: Environment TAG name
     description: The TAG name for this environment, e.g., dev, test, prod
@@ -319,7 +349,17 @@ parameters:
     displayName: Config Mount Path
     description: The path to use to mount the config file.
     required: true
-    value: /etc/
+    value: /etc/caddy/
+  - name: SERVER_HOST
+    displayName: Server Host
+    description: The value for the server host to be replaced in the Caddyfile.
+    required: true
+    value: "0.0.0.0"
+  - name: SERVER_PORT
+    displayName: Server PORT
+    description: The value for the server port to be replaced in the Caddyfile.
+    required: true
+    value: "8080"
   - name: CPU_REQUEST
     displayName: Resources CPU Request
     description: The resources CPU request (in cores) for this build.
